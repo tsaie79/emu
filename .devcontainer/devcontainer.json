@@ -14,5 +14,8 @@
     },
     "forwardPorts": [],
     "postCreateCommand": "ant prepare",
-    "remoteUser": "vscode"
+    "remoteUser": "vscode",
+    "mounts": [
+        "source=/scratch/jeng-yuantsai,target=/scratch,type=bind,consistency=cached"
+    ]
 } 
