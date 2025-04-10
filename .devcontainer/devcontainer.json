@@ -13,9 +13,16 @@
         }
     },
     "forwardPorts": [],
-    "postCreateCommand": "ant prepare",
+    "postCreateCommand": "bash .devcontainer/install-coda.sh && ant prepare",
     "remoteUser": "vscode",
     "mounts": [
-        "source=/scratch/jeng-yuantsai,target=/scratch,type=bind,consistency=cached"
-    ]
+        "source=/scratch/jeng-yuantsai,target=/scratch,type=bind,consistency=cached",
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached"
+    ],
+    "runArgs": [
+        "--env=DISPLAY=${localEnv:DISPLAY}"
+    ],
+    "containerEnv": {
+        "DISPLAY": ":0"
+    }
 } 
