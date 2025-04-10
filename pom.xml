@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jlab.coda</groupId>
+    <artifactId>emu</artifactId>
+    <version>3.3.0</version>
+
+    <properties>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>clas12maven</id>
+            <url>https://clasweb.jlab.org/clas12maven</url>
+        </repository>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- CODA dependencies -->
+        <dependency>
+            <groupId>org.jlab.coda</groupId>
+            <artifactId>cMsg</artifactId>
+            <version>6.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/java/jars/cMsg-6.0.jar</systemPath>
+        </dependency>
+        <dependency>
+            <groupId>org.jlab.coda</groupId>
+            <artifactId>jevio</artifactId>
+            <version>6.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/java/jars/jevio-6.0.jar</systemPath>
+        </dependency>
+
+        <!-- PCAP4J for reading PCAP files -->
+        <dependency>
+            <groupId>org.pcap4j</groupId>
+            <artifactId>pcap4j-core</artifactId>
+            <version>2.0.0-alpha.7</version>
+        </dependency>
+        <dependency>
+            <groupId>org.pcap4j</groupId>
+            <artifactId>pcap4j-packetfactory-static</artifactId>
+            <version>2.0.0-alpha.7</version>
+        </dependency>
+
+        <!-- LMAX Disruptor for high-performance event processing -->
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>3.4.3</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/java/jars/disruptor-3.4.3.jar</systemPath>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project> 
