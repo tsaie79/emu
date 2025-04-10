@@ -23,6 +23,8 @@ import org.jlab.coda.emu.support.control.CmdExecException;
 import org.jlab.coda.emu.support.data.*;
 import org.jlab.coda.emu.support.transport.DataChannel;
 import org.jlab.coda.jevio.*;
+import org.jlab.coda.emu.modules.socket.TcpSocketManager;
+import org.jlab.coda.emu.modules.pcap.PcapReader;
 
 import java.io.File;
 import java.io.RandomAccessFile;
@@ -36,6 +38,7 @@ import java.util.Map;
 import java.util.concurrent.Phaser;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Set;
 
 import static com.lmax.disruptor.RingBuffer.createSingleProducer;
 
@@ -137,6 +140,32 @@ public class RocSimulation extends ModuleAdapter {
     /** Flag used to stop event production. */
     private volatile boolean timeToEnd;
 
+    /** If true, use PCAP/TCP mode instead of event generation mode. */
+    private boolean usePcapMode;
+
+    /** PCAP file to read in PCAP mode. */
+    private String pcapFile;
+
+    /** Base port for TCP sockets in PCAP mode. */
+    private int basePort;
+
+    /** Default target IP for TCP connections in PCAP mode. */
+    private String defaultTargetIp;
+
+    /** Maximum number of connections per socket in PCAP mode. */
+    private int maxConnections;
+
+    /** Buffer size for TCP connections in PCAP mode. */
+    private int bufferSize;
+
+    /** Connection timeout for TCP connections in PCAP mode. */
+    private int connectionTimeout;
+
+    /** Manager for TCP sockets in PCAP mode. */
+    private TcpSocketManager socketManager;
+
+    /** Reader for PCAP files in PCAP mode. */
+    private PcapReader pcapReader;
 
     /** Callback to be run when a message from synchronizer
      *  arrives, allowing all ROCs to sync up. We subscribe
@@ -492,6 +521,24 @@ System.out.println("  Roc mod: sync = " + synced);
         useRealData = true;
 
 System.out.println("  Roc mod: using real Hall D data = " + useRealData);
+
+        // PCAP/TCP mode configuration
+        usePcapMode = false;
+        String mode = attributeMap.get("mode");
+        if (mode != null && mode.equalsIgnoreCase("pcap")) {
+            usePcapMode = true;
+            
+            // Initialize PCAP/TCP components
+            pcapFile = attributeMap.get("pcapFile");
+            basePort = Integer.parseInt(attributeMap.getOrDefault("basePort", "5000"));
+            defaultTargetIp = attributeMap.getOrDefault("defaultTargetIp", "127.0.0.1");
+            maxConnections = Integer.parseInt(attributeMap.getOrDefault("maxConnections", "10"));
+            bufferSize = Integer.parseInt(attributeMap.getOrDefault("bufferSize", "8192"));
+            connectionTimeout = Integer.parseInt(attributeMap.getOrDefault("connectionTimeout", "5000"));
+            
+            socketManager = new TcpSocketManager();
+            pcapReader = new PcapReader();
+        }
     }
 
 
@@ -1092,6 +1139,11 @@ System.out.println("  Roc mod: start With (id=" + myId + "):\n    record id = " 
 
     /** {@inheritDoc} */
     public void reset() {
+        if (usePcapMode) {
+            // Close all TCP sockets
+            socketManager.closeAllSockets();
+        }
+        
         gotResetCommand = true;
 System.out.println("  Roc mod: reset()");
         Date theDate = new Date();
@@ -1128,6 +1180,11 @@ System.out.println("  Roc mod: reset()");
 
     /** {@inheritDoc} */
     public void end() throws CmdExecException {
+        if (usePcapMode) {
+            // Close all TCP sockets
+            socketManager.closeAllSockets();
+        }
+        
         paused = false;
         gotEndCommand = true;
 
@@ -1201,135 +1258,26 @@ System.out.println("  Roc mod: reset()");
 
 
     /** {@inheritDoc} */
-    public void prestart() {
-
-//System.out.println("  Roc mod: PRESTART");
-        moduleState = CODAState.PAUSED;
-
-        // Reset some variables
-        gotGoCommand = gotEndCommand = gotResetCommand = false;
-        eventRate = wordRate = 0F;
-        eventCountTotal = wordCountTotal = 0L;
-        rocRecordId = 1;
-
-        if (synced) {
-            phaser    = new Phaser(eventProducingThreads + 1);
-            endPhaser = new Phaser(eventProducingThreads + 2);
-            timeToEnd = false;
-            gotEndCommand = false;
-        }
-
-        // create threads objects (but don't start them yet)
-        RateCalculator = new Thread(emu.getThreadGroup(), new RateCalculatorThread(), emu.name()+":watcher");
-
-
-//        boolean sendUser = true;
-//
-//        // Send user events right before prestart
-//        if (sendUser && emu.name().equals("Roc1")) {
-//            try {
-//                // Put in User events
-//                System.out.println("  Roc mod: write USER event for Roc1");
-//                PayloadBuffer pBuf = createUserBuffer(outputOrder, false, 1);
-//                eventToOutputChannel(pBuf, 0, 0);
-//                rocRecordId++;
-//
-////                System.out.println("  Roc mod: write FIRST event for Roc1");
-////                pBuf = createUserBuffer(outputOrder, true, 2);
-////                eventToOutputChannel(pBuf, 0, 0);
-////                rocRecordId++;
-////
-////                System.out.println("  Roc mod: write USER event for Roc1");
-////                pBuf = createUserBuffer(outputOrder, false, 3);
-////                eventToOutputChannel(pBuf, 0, 0);
-////                rocRecordId++;
-////
-////                for (int i=0; i < 8200; i++) {
-////                    System.out.println("  Roc mod: write FIRST event for Roc1");
-////                    pBuf = createUserBuffer(outputOrder, true, i);
-////                    eventToOutputChannel(pBuf, 0, 0);
-////                    rocRecordId++;
-////
-////                }
-//            }
-//            catch (InterruptedException e) {
-//                e.printStackTrace();
-//            }
-//
-//            eventCountTotal++;
-//            wordCountTotal  += 7;
-////            eventCountTotal += 3;
-////            wordCountTotal  += 3*7;
-////            eventCountTotal += 8200 + 0;
-////            wordCountTotal  += (8200 + 0)*7;
-//        }
-
-
-        // Create PRESTART event
-        PayloadBuffer pBuf = Evio.createControlBuffer(ControlType.PRESTART, emu.getRunNumber(),
-                                                      emu.getRunTypeId(), 0, 0,
-                                                      outputOrder, false);
-        // Send to first ring on ALL channels
-        for (int i=0; i < outputChannelCount; i++) {
-            // Copy buffer and use that
-            PayloadBuffer pBuf2 = new PayloadBuffer(pBuf);
+    public void prestart() throws CmdExecException {
+        if (usePcapMode) {
             try {
-                eventToOutputChannel(pBuf2, i, 0);
+                // Read PCAP file and get source IPs
+                pcapReader.readPcap(pcapFile);
+                Set<String> sourceIPs = pcapReader.getSourceIPs();
+                
+                // Create TCP sockets for each source IP
+                int port = basePort;
+                for (String sourceIP : sourceIPs) {
+                    socketManager.createSocketForIP(sourceIP, port++, defaultTargetIp, 
+                                                  maxConnections, bufferSize, connectionTimeout);
+                }
+            } catch (Exception e) {
+                throw new CmdExecException("Error in PCAP mode prestart: " + e.getMessage());
             }
-            catch (InterruptedException e) {
-                return;
-            }
-            System.out.println("  Roc mod: inserted PRESTART event to channel " + i);
         }
-
-        rocRecordId++;
-
-//        // Send more user events right after prestart
-//        if (sendUser && emu.name().equals("Roc1")) {
-//            try {
-//                // Put in User events
-//                System.out.println("  Roc mod: write USER event after prestart for Roc1");
-//                pBuf = createUserBuffer(outputOrder, false, 5);
-//                eventToOutputChannel(pBuf, 0, 0);
-//                rocRecordId++;
-//
-////                System.out.println("  Roc mod: write FIRST event after prestart for Roc1");
-////                pBuf = createUserBuffer(outputOrder, true, 6);
-////                eventToOutputChannel(pBuf, 0, 0);
-////                rocRecordId++;
-////
-////                System.out.println("  Roc mod: write USER event after prestart for Roc1");
-////                pBuf = createUserBuffer(outputOrder, false, 7);
-////                eventToOutputChannel(pBuf, 0, 0);
-////                rocRecordId++;
-//            }
-//            catch (InterruptedException e) {
-//                e.printStackTrace();
-//            }
-//
-//            eventCountTotal++;
-//            wordCountTotal  += 7;
-////            eventCountTotal += 3;
-////            wordCountTotal  += 21;
-//        }
-
-
-
-        try {
-            // Set start-of-run time in local XML config / debug GUI
-            Configurer.setValue(emu.parameters(), "status/run_start_time", "--prestart--");
-        }
-        catch (DataNotFoundException e) {}
-
-        // Subscribe to cMsg server for ROC synchronization purposes
-        if (synced) {
-            cMsgServer = emu.getCmsgPortal().getCmsgServer();
-            try {
-                cmsgSubHandle = cMsgServer.subscribe("sync", "ROC", callback, null);
-            }
-            catch (cMsgException e) {/* never happen */}
-        }
-//        System.out.println("  Roc mod: after PRESTART, rocRecordId = " + rocRecordId);
+        
+        // Call the original prestart implementation
+        super.prestart();
     }
 
 
